@@ -1,9 +1,10 @@
 package me.champeau.groovydroid;
 
+import android.os.Build;
 import android.util.Log;
 
 import com.android.dx.Version;
-import com.android.dx.dex.DexFormat;
+import com.android.dx.cf.direct.DirectClassFile;
 import com.android.dx.dex.DexOptions;
 import com.android.dx.dex.cf.CfOptions;
 import com.android.dx.dex.cf.CfTranslator;
@@ -53,7 +54,7 @@ public class GrooidShell {
         tmpDynamicFiles = tmpDir;
         classLoader = parent;
         dexOptions = new DexOptions();
-        dexOptions.targetApiLevel = DexFormat.API_NO_EXTENDED_OPCODES;
+        dexOptions.targetApiLevel = 13;
         cfOptions = new CfOptions();
         cfOptions.positionInfo = PositionList.LINES;
         cfOptions.localInfo = true;
@@ -73,6 +74,7 @@ public class GrooidShell {
         config.setBytecodePostprocessor(new BytecodeProcessor() {
             @Override
             public byte[] processBytecode(String s, byte[] bytes) {
+                //ClassDefItem classDefItem = CfTranslator.translate(new DirectClassFile(bytes, s+".class", false), bytes, cfOptions, dexOptions, dexFile);
                 ClassDefItem classDefItem = CfTranslator.translate(s+".class", bytes, cfOptions, dexOptions);
                 dexFile.add(classDefItem);
                 classNames.add(s);
@@ -119,18 +121,27 @@ public class GrooidShell {
         File tmpDex = new File(tmpDynamicFiles, UUID.randomUUID().toString()+".jar");
         Map<String,Class> result = new LinkedHashMap<String, Class>();
         try {
-            FileOutputStream fos = new FileOutputStream(tmpDex);
-            JarOutputStream jar = new JarOutputStream(fos, makeManifest());
-            JarEntry classes = new JarEntry(DEX_IN_JAR_NAME);
-            classes.setSize(dalvikBytecode.length);
-            jar.putNextEntry(classes);
-            jar.write(dalvikBytecode);
-            jar.closeEntry();
-            jar.finish();
-            jar.flush();
-            fos.flush();
-            fos.close();
-            jar.close();
+            FileOutputStream fos = null;
+            JarOutputStream jar = null;
+            try {
+                fos = new FileOutputStream(tmpDex);
+                jar = new JarOutputStream(fos, makeManifest());
+                JarEntry classes = new JarEntry(DEX_IN_JAR_NAME);
+                classes.setSize(dalvikBytecode.length);
+                jar.putNextEntry(classes);
+                jar.write(dalvikBytecode);
+                jar.closeEntry();
+                jar.finish();
+            }finally{
+                if(jar!=null){
+                    jar.flush();
+                    jar.close();
+                }
+                if(fos!=null){
+                    fos.flush();
+                    fos.close();
+                }
+            }
             DexClassLoader loader = new DexClassLoader(tmpDex.getAbsolutePath(), tmpDynamicFiles.getAbsolutePath(), null, classLoader);
             for (String className : classNames) {
                 result.put(className, loader.loadClass(className));
